@@ -7,15 +7,28 @@
 # MAGIC - Row-level security filters (provider can only see their own patients)
 # MAGIC - Table tags for data classification
 # MAGIC - Table ACLs
+# MAGIC
+# MAGIC **Note:** `clinicalflow_dev` catalog was pre-created via the Databricks UI
+# MAGIC using `clinicalflow_dev_loc` as the managed storage location.
 
 # COMMAND ----------
 
-# MAGIC %md ## 1 — Verify Catalogs and Schemas
+# MAGIC %md ## 1 — Verify Catalog and Create Schemas
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC SHOW CATALOGS;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- Catalog already exists (created via UI); just ensure schemas are present
+# MAGIC USE CATALOG clinicalflow_dev;
+# MAGIC
+# MAGIC CREATE SCHEMA IF NOT EXISTS bronze;
+# MAGIC CREATE SCHEMA IF NOT EXISTS silver;
+# MAGIC CREATE SCHEMA IF NOT EXISTS gold;
 
 # COMMAND ----------
 
@@ -88,6 +101,7 @@
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC USE CATALOG clinicalflow_dev;
 # MAGIC USE SCHEMA silver;
 # MAGIC
 # MAGIC -- Claims fact (deduplicated via MERGE)
@@ -178,6 +192,7 @@
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC USE CATALOG clinicalflow_dev;
 # MAGIC USE SCHEMA gold;
 # MAGIC
 # MAGIC CREATE TABLE IF NOT EXISTS provider_performance (
@@ -311,6 +326,8 @@
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC USE CATALOG clinicalflow_dev;
+# MAGIC
 # MAGIC -- Row filter: provider can only query their own rows
 # MAGIC -- admins and care_managers see all rows
 # MAGIC CREATE OR REPLACE FUNCTION silver.provider_row_filter(provider_id STRING)
@@ -329,6 +346,8 @@
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC USE CATALOG clinicalflow_dev;
+# MAGIC
 # MAGIC -- Tag PHI-containing tables
 # MAGIC ALTER TABLE silver.claims_fact
 # MAGIC   SET TAGS ('classification' = 'PHI', 'domain' = 'claims', 'sla' = 'silver');
@@ -352,7 +371,6 @@
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- List all tables across all schemas
 # MAGIC SHOW TABLES IN clinicalflow_dev.bronze;
 
 # COMMAND ----------
