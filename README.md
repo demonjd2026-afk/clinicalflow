@@ -200,6 +200,92 @@ clinicalflow/
 
 ---
 
+## Compute Configuration
+
+### Interactive Cluster (`clinicalflow-dev-cluster`)
+
+Used for notebook development, Unity Catalog setup, and data exploration.
+
+| Setting | Value |
+|---|---|
+| **Cluster name** | `clinicalflow-dev-cluster` |
+| **Policy** | Unrestricted ⚠️ (see note below) |
+| **Databricks Runtime** | 15.4 LTS (Scala 2.12, Spark 3.5.0) |
+| **Node type** | `Standard_D4ads_v6` (4 cores, 16 GB RAM) |
+| **Mode** | Single node |
+| **Photon** | Disabled (enable for production workloads) |
+| **Auto-terminate** | 15 minutes |
+| **Estimated cost** | ~1 DBU/h |
+
+> **⚠️ Why Unrestricted policy (not Personal Compute)?**
+> The Personal Compute policy restricts the node type list to a fixed set of VM families — the Ddsv6 family (which includes `Standard_D4ads_v6`) is **not included** in that list. You must select **Unrestricted** to see and select Ddsv6 nodes.
+
+> **⚠️ Why not Serverless?**
+> The Serverless credential (`adb_clinicalflow`) is scoped only to workspace-managed storage. It **cannot access** `stclinicalflow` (the ADLS Gen2 account backing `clinicalflow_dev` catalog external locations). The interactive cluster uses a managed identity with **Storage Blob Data Contributor** on `stclinicalflow`, so it works.
+
+### Azure vCPU Quota — Required Setup
+
+New Azure PAYG subscriptions ship with **0 quota** for almost all VM families. You must request quota before the cluster will start.
+
+**What to request:**
+
+| Field | Value |
+|---|---|
+| **Quota family** | Standard Ddsv6 Family vCPUs |
+| **Region** | East US 2 |
+| **New limit** | 8 cores (covers one 4-core node + buffer) |
+
+**How to request (auto-approved, instant):**
+
+1. Azure Portal → **Quotas** → **Compute**
+2. Filter region: **East US 2**, search: **Ddsv6**
+3. Click the row → **New Quota Request** → enter **8** → Submit
+4. Auto-approved within seconds — no support ticket needed
+
+> **Note:** DSv2 is End of Life (Not Adjustable). FXmdsv2 nodes are not included in the Databricks node list even if quota is granted. Ddsv5 requires a support ticket on Basic plan. **Ddsv6 auto-approves** — use this family.
+
+### Job Clusters (Automated Workflows)
+
+Job clusters are created on-demand by Databricks Workflows and terminated when the job completes.
+
+| Setting | Value |
+|---|---|
+| **Node type** | `Standard_DS3_v2` (4 cores, 14 GB RAM) |
+| **Autoscale** | 1 – 4 workers |
+| **Spot strategy** | `SPOT_WITH_FALLBACK_AZURE` |
+| **Runtime** | 15.4 LTS |
+
+> Job clusters use `Standard_DS3_v2` (DSv2 family) which has broader availability; quota for DSv2 may already exist on your subscription. If not, request **Standard DSv2 Family vCPUs** (16 cores, East US 2) the same way as above.
+
+---
+
+## Catalog Setup — Known Quirks
+
+### Storage Credential (`UNAUTHORIZED_ACCESS`)
+
+The auto-created workspace credential `adb_clinicalflow` is **metastore-only** — Databricks hard-restricts it to the UC system storage path. Using it for external locations on `stclinicalflow` produces:
+
+```
+[UNAUTHORIZED_ACCESS] The credential 'adb_clinicalflow' is a workspace default credential
+that is only allowed to access data in the following paths:
+'abfss://unity-catalog-storage@dbstoragek27ajb4toues2.dfs.core.windows.net/...'
+```
+
+**Fix:** Create a dedicated Access Connector (`ac-clinicalflow`) in Azure, assign it **Storage Blob Data Contributor** on `stclinicalflow`, create a storage credential `clinicalflow_adls` backed by it, and recreate external locations using `clinicalflow_adls`. Full steps in [SETUP.md → Step 7](./SETUP.md#step-7--create-access-connector--storage-credential--external-locations).
+
+### `TABLE_DOES_NOT_EXIST` with UUID error
+
+If you see:
+
+```
+[TABLE_DOES_NOT_EXIST.RESOURCE_DOES_NOT_EXIST]
+Table '<UUID>' does not exist.
+```
+
+This happens when the external location's storage credential doesn't have access to the catalog's managed storage path — the catalog is returning its internal UUID when it can't resolve the storage path. Fix the storage credential first (above), then retry `CREATE TABLE`.
+
+---
+
 ## Databricks Edition Required
 
 > ⚠️ **Azure Databricks Premium tier is required.** Standard tier and Databricks Community Edition will not work for this project.
@@ -238,79 +324,13 @@ Quick reference — 12 steps to go from zero to a running workspace:
 | 5 | Create Databricks Premium (Hybrid) workspace | [Step 5 →](./SETUP.md#step-5--create-azure-databricks-workspace) |
 | 6 | Verify Unity Catalog is auto-enabled | [Step 6 →](./SETUP.md#step-6--verify-unity-catalog-auto-enabled) |
 | 7 | Assign IAM role + create 3 external locations | [Step 7 →](./SETUP.md#step-7--assign-iam-role--create-external-locations) |
-| 8 | Create catalog via UI (Default Storage) | [Step 8 →](./SETUP.md#step-8--create-unity-catalog-catalogs--schemas) |
+| 8 | Create catalog via UI (select `clinicalflow_dev_loc`) | [Step 8 →](./SETUP.md#step-8--create-unity-catalog-catalogs--schemas) |
 | 9 | Generate Personal Access Token | [Step 9 →](./SETUP.md#step-9--generate-a-personal-access-token-pat) |
 | 10 | Configure Databricks CLI | [Step 10 →](./SETUP.md#step-10--configure-databricks-cli) |
 | 11 | Clone repo + DAB deploy (dev/staging/prod) | [Step 11 →](./SETUP.md#step-11--clone-repo-and-deploy-with-dab) |
 | 12 | Bootstrap 150M synthetic claims | [Step 12 →](./SETUP.md#step-12--bootstrap-synthetic-data) |
 
 > 💡 **Estimated cost:** ~₹3,500–4,500 total for a full dev build. See [cost control tips](./SETUP.md#cost-control-tips).
-
----
-
-## Compute Configuration
-
-> ⚠️ **Do not use Serverless compute for setup notebooks.** Serverless clusters use a restricted workspace default credential (`adb_clinicalflow`) that is scoped only to the internal UC metastore storage. Managed tables in `clinicalflow_dev` are stored in `clinicalflow_dev_loc` (ADLS Gen2 `stclinicalflow`), which requires a regular interactive cluster with the workspace managed identity.
-
-### Interactive Cluster (notebooks 01–05, data generation)
-
-| Setting | Value |
-|---|---|
-| **Policy** | Personal Compute |
-| **Runtime** | `15.4 LTS` (Scala 2.12, Spark 3.5.0) — uncheck Machine Learning |
-| **Instance type** | `Standard_D4ds_v5` (16 GB, 4 cores) |
-| **Mode** | Single node |
-| **Data access** | Unity Catalog (auto-configured) |
-| **Estimated cost** | ~1 DBU/h |
-
-> The runtime must be **15.4 LTS (Scala 2.12)** to match `spark_version: 15.4.x-scala2.12` set in `variables.yml`. Do not use the Machine Learning runtime variant — it bundles ML libraries that are unnecessary here and runs on a different DBR.
-
-### Why Serverless Fails
-
-Serverless clusters use an Entra-managed workspace credential (`adb_clinicalflow`) whose storage access is locked to the internal UC metastore path (`abfss://unity-catalog-storage@dbstoragek27ajb4toues2.dfs.core.windows.net/...`). When a catalog is created with a custom external location (e.g. `clinicalflow_dev_loc` pointing to `stclinicalflow`), any `CREATE TABLE` or `saveAsTable` call routes managed table data to that custom storage — which the Serverless credential cannot reach, producing:
-
-```
-UNAUTHORIZED_ACCESS: The credential 'adb_clinicalflow' is a workspace default credential
-that is only allowed to access data in the following paths:
-'abfss://unity-catalog-storage@dbstoragek27ajb4toues2.dfs.core.windows.net/...'
-```
-
-A regular interactive cluster inherits the workspace managed identity, which was granted **Storage Blob Data Contributor** on `stclinicalflow` when the external location was set up — so it can write to both storage accounts.
-
-### Job Clusters (DAB-deployed pipelines)
-
-Job clusters are defined in `variables.yml` and `resources/clusters/job_cluster_policy.yml`:
-
-| Setting | Value |
-|---|---|
-| **Runtime** | `15.4.x-scala2.12` |
-| **Driver** | `Standard_DS3_v2` |
-| **Workers** | `Standard_DS3_v2`, min 1 / max 4 (autoscale) |
-| **Spot policy** | `SPOT_WITH_FALLBACK_AZURE` |
-| **On-demand fallback** | Enabled (prevents job failure if spot unavailable) |
-
----
-
-## Catalog Setup — Known Quirk
-
-The `clinicalflow_dev` catalog **must be created via the Databricks UI**, not SQL. The workspace metastore has no root storage URL configured, so `CREATE CATALOG` without `MANAGED LOCATION` fails with:
-
-```
-Metastore storage root URL does not exist.
-```
-
-**UI path:** Catalog → + Add → Add a catalog → select `clinicalflow_dev_loc` as storage location → name `clinicalflow_dev` → Create.
-
-Then create schemas in SQL Editor:
-
-```sql
-USE CATALOG clinicalflow_dev;
-CREATE SCHEMA IF NOT EXISTS bronze;
-CREATE SCHEMA IF NOT EXISTS silver;
-CREATE SCHEMA IF NOT EXISTS gold;
-```
-
-The notebook `01_unity_catalog_setup.py` assumes the catalog and schemas already exist and will skip catalog creation.
 
 ---
 

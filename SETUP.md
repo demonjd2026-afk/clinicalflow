@@ -117,38 +117,56 @@ For Azure PAYG with a personal account, **Unity Catalog is automatically enabled
 
 ---
 
-## Step 7 — Assign IAM Role + Create External Locations
+## Step 7 — Create Access Connector + Storage Credential + External Locations
 
-> **Why this is needed:** The auto-created metastore has no default storage root. You must create External Locations and point your catalogs to them explicitly. Before that, the managed identity needs permission to access your storage account.
+> **Why this is needed:** The auto-created workspace credential (`adb_clinicalflow`) is a metastore-only credential — Databricks hard-restricts it to the UC system storage path and it **cannot access your `stclinicalflow` account**. You must create a dedicated Access Connector and storage credential for your ADLS Gen2.
 
-### Step 7a — Assign IAM Role (Azure Portal)
+### Step 7a — Create Access Connector for Azure Databricks
 
-When Azure creates a Databricks Premium workspace, it auto-creates a managed identity resource called `unity-catalog-access-connector` (type: **Access Connector for Azure Databricks**). Give it storage access:
+1. In Azure Portal → search **"Access Connector for Azure Databricks"** → **Create**
+2. Resource group: `rg-clinicalflow`
+3. Name: `ac-clinicalflow`
+4. Region: **East US 2**
+5. Managed Identity: **SystemAssigned** (default)
+6. Click **Review + Create** → **Create**
 
-1. Go to **Azure Portal** → search `stclinicalflow` → open your storage account
-2. Left sidebar → **Access Control (IAM)**
-3. Click **+ Add** → **Add role assignment**
-4. **Role** tab → search **Storage Blob Data Contributor** → select it → **Next**
-5. **Members** tab → Assign access to: **Managed identity** → click **+ Select members**
-6. In the side panel:
-   - Subscription: `clinicalflow-payg`
-   - Managed identity dropdown → select **Access Connector for Azure Databricks (1)**
-   - Select `unity-catalog-access-connector` from the list
+Wait for deployment to complete.
+
+### Step 7b — Assign IAM Role on Storage Account
+
+1. Go to **`stclinicalflow`** (your storage account) → **Access Control (IAM)**
+2. Click **+ Add** → **Add role assignment**
+3. **Role** tab → search **Storage Blob Data Contributor** → select it → **Next**
+4. **Members** tab → Assign access to: **Managed identity** → click **+ Select members**
+5. In the side panel:
+   - Managed identity dropdown → **Access Connector for Azure Databricks**
+   - Select `ac-clinicalflow`
    - Click **Select**
-7. Click **Review + assign**
+6. Click **Review + assign**
 
-Wait **1–2 minutes** for the role to propagate before continuing.
+Wait **1–2 minutes** for the role to propagate.
 
-### Step 7b — Create External Locations (Databricks Workspace)
+### Step 7c — Create Storage Credential in Databricks
 
-**Navigation:** Databricks workspace → **Catalog** (left sidebar) → scroll down → **External Data** → **External locations** → **Create external location**
+1. In Databricks workspace → **Catalog** (left sidebar) → click **+** → **Create a credential**
+2. Credential type: **Azure Managed Identity**
+3. Credential name: `clinicalflow_adls`
+4. Access Connector ID:
+   ```
+   /subscriptions/<your-subscription-id>/resourceGroups/rg-clinicalflow/providers/Microsoft.Databricks/accessConnectors/ac-clinicalflow
+   ```
+   *(Find your subscription ID in Azure Portal → Subscriptions)*
+5. Click **Create**
 
-> ℹ️ **Storage credential is already there.** Azure auto-creates a credential named `adb_clinicalflow (Managed Identity)` — do NOT create one manually. Just select it from the dropdown.
+> ⚠️ **Do NOT use `adb_clinicalflow`** for external locations. It is the workspace default credential scoped only to the UC metastore path. Using it will produce `UNAUTHORIZED_ACCESS` errors when creating tables.
+
+### Step 7d — Create External Locations
+
+**Navigation:** Databricks workspace → **Catalog** → **External Data** → **External locations** → **Create external location**
 
 Create all three locations using the table below. For each:
 - Storage type: **Azure Data Lake Storage**
-- Storage credential: `adb_clinicalflow (Managed Identity)`
-- Comment: *(leave blank)*
+- Storage credential: `clinicalflow_adls` ← use the new credential, not `adb_clinicalflow`
 - Click **Create** (or **Force create** if prompted — the File Events warning is safe to ignore)
 
 | External location name | URL |
@@ -166,7 +184,13 @@ Create all three locations using the table below. For each:
 | Hierarchical Namespace Enabled | ✅ Success |
 | File Events Read | ⚠️ Failed — safe to ignore (EventGrid optimization, not required) |
 
-> ✅ After creating all three, verify under **Catalog → External Data → External locations**.
+> If you previously created external locations using `adb_clinicalflow`, drop them and recreate with `clinicalflow_adls`:
+> ```sql
+> DROP EXTERNAL LOCATION IF EXISTS clinicalflow_dev_loc FORCE;
+> DROP EXTERNAL LOCATION IF EXISTS clinicalflow_staging_loc FORCE;
+> DROP EXTERNAL LOCATION IF EXISTS clinicalflow_prod_loc FORCE;
+> -- then recreate via UI with clinicalflow_adls
+> ```
 
 ---
 
@@ -277,7 +301,34 @@ databricks bundle run data_generation_job --target dev
 | Keep **Vector Search endpoint stopped** when not demoing | ~₹400/month saved |
 | Use `Trigger.AvailableNow` instead of continuous streaming | Pay only per run |
 | Run OPTIMIZE + VACUUM weekly, not daily | Reduces cluster hours |
-| Enable **auto-terminate** on all-purpose clusters after 30 min idle | Eliminates idle cost |
+| Enable **auto-terminate** on all-purpose clusters after 15 min idle | Eliminates idle cost |
+
+---
+
+## Compute Setup
+
+### vCPU Quota (Required for Interactive Cluster)
+
+New Azure PAYG subscriptions have **0 quota** for most VM families. Request quota before creating a cluster:
+
+1. Azure Portal → **Quotas** → **Compute**
+2. Filter region: **East US 2**, search: **Ddsv6**
+3. Click the row → **New Quota Request** → enter **8** → Submit
+4. Auto-approved within seconds
+
+> **Why Ddsv6?** DSv2 is End of Life. FXmdsv2 nodes are not in the Databricks node list. Ddsv5 requires a support ticket on Basic plan. **Ddsv6 auto-approves instantly.**
+
+### Interactive Cluster (`clinicalflow-dev-cluster`)
+
+| Setting | Value |
+|---|---|
+| Policy | **Unrestricted** (Personal Compute policy hides Ddsv6 nodes) |
+| Runtime | 15.4 LTS |
+| Node type | `Standard_D4ads_v6` (4 cores, 16 GB) |
+| Mode | Single node |
+| Auto-terminate | 15 minutes |
+
+> Use **Unrestricted** policy — Personal Compute restricts the node type list and Ddsv6 does not appear in it.
 
 ---
 
@@ -290,9 +341,10 @@ databricks bundle run data_generation_job --target dev
 | Storage account | `stclinicalflow` | ADLS Gen2, LRS, HNS enabled |
 | Containers | `clinicalflow-dev/staging/prod` | One per environment |
 | Databricks workspace | `adb-clinicalflow` | Premium, Hybrid |
-| Managed identity | `unity-catalog-access-connector` | Auto-created by Azure |
-| Storage credential | `adb_clinicalflow (Managed Identity)` | Auto-created by Databricks |
-| External locations | `clinicalflow_dev/staging/prod_loc` | One per container |
+| Access Connector | `ac-clinicalflow` | SystemAssigned managed identity |
+| Storage credential | `clinicalflow_adls` | Backed by `ac-clinicalflow` |
+| External locations | `clinicalflow_dev/staging/prod_loc` | Use `clinicalflow_adls`, not `adb_clinicalflow` |
 | UC Catalogs | `clinicalflow_dev/staging/prod` | MANAGED LOCATION required |
 | Dev schemas | `bronze`, `silver`, `gold` | Under `clinicalflow_dev` |
+| Interactive cluster | `clinicalflow-dev-cluster` | Unrestricted policy, Standard_D4ads_v6 |
 | PAT token | `clinicalflow-pat` | 90-day expiry |

@@ -9,6 +9,8 @@
 # MAGIC
 # MAGIC **Run once** to bootstrap the dev environment.
 # MAGIC Estimated runtime: ~25–35 min on a 4-node cluster.
+# MAGIC
+# MAGIC > ✅ All dimension tables use `spark.range()` — no Python loops, no GC pressure.
 
 # COMMAND ----------
 
@@ -18,9 +20,6 @@ from pyspark.sql.types import (
     StructType, StructField, StringType, DoubleType,
     DateType, IntegerType, TimestampType
 )
-import uuid
-from datetime import date, timedelta
-import random
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -88,92 +87,63 @@ INSURANCE_PLANS = [
 
 # COMMAND ----------
 
-# MAGIC %md ## 2 — Generate Provider Dimension
+# MAGIC %md ## 2 — Generate Provider Dimension (Spark-native, no Python loop)
 
 # COMMAND ----------
 
-def generate_providers(n: int):
-    rows = []
-    for i in range(n):
-        state = STATES[i % len(STATES)]
-        specialty = SPECIALTIES[i % len(SPECIALTIES)]
-        rows.append((
-            f"PRV{i:08d}",
-            f"Dr. Provider {i}",
-            specialty,
-            f"NPI{i:010d}",
-            "IN_NETWORK" if random.random() < 0.82 else "OUT_OF_NETWORK",
-            state,
-            f"Hospital System {i % 50}",
-        ))
-    return rows
-
-provider_schema = StructType([
-    StructField("provider_id",    StringType()),
-    StructField("provider_name",  StringType()),
-    StructField("specialty",      StringType()),
-    StructField("npi",            StringType()),
-    StructField("network_status", StringType()),
-    StructField("state",          StringType()),
-    StructField("hospital_affil", StringType()),
-])
-
-providers_df = spark.createDataFrame(
-    generate_providers(TARGET_PROVIDERS),
-    schema=provider_schema
-).withColumn("_updated_ts", F.current_timestamp())
+# Uses spark.range() — no Python loop, no GC pressure, fully distributed
+providers_df = (
+    spark.range(TARGET_PROVIDERS)
+    .withColumn("provider_id",    F.concat(F.lit("PRV"), F.lpad(F.col("id"), 8, "0")))
+    .withColumn("provider_name",  F.concat(F.lit("Dr. Provider "), F.col("id").cast("string")))
+    .withColumn("specialty",      F.element_at(
+                                      F.array([F.lit(s) for s in SPECIALTIES]),
+                                      F.expr(f"cast(id % {len(SPECIALTIES)} + 1 as int)")))
+    .withColumn("npi",            F.concat(F.lit("NPI"), F.lpad(F.col("id"), 10, "0")))
+    .withColumn("network_status", F.when(F.expr("id % 100 < 82"), F.lit("IN_NETWORK"))
+                                   .otherwise(F.lit("OUT_OF_NETWORK")))
+    .withColumn("state",          F.element_at(
+                                      F.array([F.lit(s) for s in STATES]),
+                                      F.expr(f"cast(id % {len(STATES)} + 1 as int)")))
+    .withColumn("hospital_affil", F.concat(F.lit("Hospital System "), F.expr("cast(id % 50 as string)")))
+    .withColumn("_updated_ts",    F.current_timestamp())
+    .drop("id")
+)
 
 providers_df.write.format("delta").mode("overwrite").saveAsTable(f"{SILVER}.provider_dim")
-print(f"provider_dim: {providers_df.count():,} rows")
+print(f"provider_dim: {spark.table(f'{SILVER}.provider_dim').count():,} rows")
 
 # COMMAND ----------
 
-# MAGIC %md ## 3 — Generate Patient Dimension
+# MAGIC %md ## 3 — Generate Patient Dimension (Spark-native, no Python loop)
 
 # COMMAND ----------
 
-def generate_patients(n: int):
-    rows = []
-    base_date = date(1930, 1, 1)
-    for i in range(n):
-        dob = base_date + timedelta(days=random.randint(0, 365 * 70))
-        state = STATES[i % len(STATES)]
-        rows.append((
-            f"PAT{i:08d}",
-            f"FirstName{i}",
-            f"LastName{i}",
-            dob,
-            "M" if i % 2 == 0 else "F",
-            f"{i % 9999} Main St",
-            f"City{i % 500}",
-            state,
-            f"{10000 + (i % 89999):05d}",
-            INSURANCE_PLANS[i % len(INSURANCE_PLANS)],
-            random.randint(0, 8),
-        ))
-    return rows
-
-patient_schema = StructType([
-    StructField("patient_id",        StringType()),
-    StructField("first_name",        StringType()),
-    StructField("last_name",         StringType()),
-    StructField("dob",               DateType()),
-    StructField("gender",            StringType()),
-    StructField("address",           StringType()),
-    StructField("city",              StringType()),
-    StructField("state",             StringType()),
-    StructField("zip_code",          StringType()),
-    StructField("insurance_plan",    StringType()),
-    StructField("chronic_conditions",IntegerType()),
-])
-
-patients_df = spark.createDataFrame(
-    generate_patients(TARGET_PATIENTS),
-    schema=patient_schema
-).withColumn("_updated_ts", F.current_timestamp())
+# Uses spark.range() — eliminates the 6M-row Python list that caused GC pressure
+# dob: spread across 70 years starting 1930 (25,550 days ≈ 70 years)
+patients_df = (
+    spark.range(TARGET_PATIENTS)
+    .withColumn("patient_id",         F.concat(F.lit("PAT"), F.lpad(F.col("id"), 8, "0")))
+    .withColumn("first_name",         F.concat(F.lit("FirstName"), F.col("id").cast("string")))
+    .withColumn("last_name",          F.concat(F.lit("LastName"),  F.col("id").cast("string")))
+    .withColumn("dob",                F.date_add(F.lit("1930-01-01"), F.expr("cast(id % 25550 as int)")))
+    .withColumn("gender",             F.when(F.expr("id % 2 = 0"), F.lit("M")).otherwise(F.lit("F")))
+    .withColumn("address",            F.concat(F.expr("cast(id % 9999 as string)"), F.lit(" Main St")))
+    .withColumn("city",               F.concat(F.lit("City"), F.expr("cast(id % 500 as string)")))
+    .withColumn("state",              F.element_at(
+                                          F.array([F.lit(s) for s in STATES]),
+                                          F.expr(f"cast(id % {len(STATES)} + 1 as int)")))
+    .withColumn("zip_code",           F.lpad(F.expr("cast(10000 + (id % 89999) as string)"), 5, "0"))
+    .withColumn("insurance_plan",     F.element_at(
+                                          F.array([F.lit(p) for p in INSURANCE_PLANS]),
+                                          F.expr(f"cast(id % {len(INSURANCE_PLANS)} + 1 as int)")))
+    .withColumn("chronic_conditions", F.expr("cast(id % 9 as int)"))
+    .withColumn("_updated_ts",        F.current_timestamp())
+    .drop("id")
+)
 
 patients_df.write.format("delta").mode("overwrite").saveAsTable(f"{SILVER}.patient_dim")
-print(f"patient_dim: {patients_df.count():,} rows")
+print(f"patient_dim: {spark.table(f'{SILVER}.patient_dim').count():,} rows")
 
 # COMMAND ----------
 
@@ -190,7 +160,6 @@ MULTIPLIER  = TARGET_CLAIMS // BASE_CLAIMS   # 30x
 
 diag_codes  = [d[0] for d in DIAGNOSIS_CODES]
 proc_codes  = PROCEDURE_CODES
-statuses    = CLAIM_STATUSES
 
 # Base claims dataframe
 base_claims_df = (
@@ -310,11 +279,11 @@ print(f"diagnosis_dim: {diag_df.count()} rows (AI enrichment runs in genai_job)"
 # COMMAND ----------
 
 tables = {
-    "bronze.claims_raw":       TARGET_CLAIMS,
+    "bronze.claims_raw":        TARGET_CLAIMS,
     "bronze.er_admissions_raw": TARGET_ER_EVENTS,
-    "silver.patient_dim":      TARGET_PATIENTS,
-    "silver.provider_dim":     TARGET_PROVIDERS,
-    "silver.diagnosis_dim":    len(DIAGNOSIS_CODES),
+    "silver.patient_dim":       TARGET_PATIENTS,
+    "silver.provider_dim":      TARGET_PROVIDERS,
+    "silver.diagnosis_dim":     len(DIAGNOSIS_CODES),
 }
 
 print("\n=== Data Generation Summary ===")
