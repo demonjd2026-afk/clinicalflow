@@ -1,0 +1,46 @@
+resources:
+  jobs:
+    clinicalflow_maintenance_job:
+      name: ClinicalFlow - Maintenance Job
+      description: "Weekly OPTIMIZE, VACUUM, and ANALYZE TABLE for all Silver + Gold tables"
+
+      schedule:
+        quartz_cron_expression: "0 0 2 ? * SUN"   # 02:00 UTC every Sunday
+        timezone_id: UTC
+        pause_status: PAUSED
+
+      email_notifications:
+        on_failure:
+          - jayanthdolai@gmail.com
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: optimize_silver
+          notebook_task:
+            notebook_path: src/notebooks/04_optimization.py
+            base_parameters:
+              catalog: ${var.catalog}
+          job_cluster_key: maintenance_cluster
+
+        - task_key: optimize_gold
+          depends_on:
+            - task_key: optimize_silver
+          notebook_task:
+            notebook_path: src/notebooks/04_optimization.py
+            base_parameters:
+              catalog: ${var.catalog}
+              layer: gold
+          job_cluster_key: maintenance_cluster
+
+      job_clusters:
+        - job_cluster_key: maintenance_cluster
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: 2   # maintenance doesn't need large cluster
+            spark_conf:
+              spark.databricks.delta.preview.enabled: "true"
+            azure_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK_AZURE

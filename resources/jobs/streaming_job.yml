@@ -1,0 +1,26 @@
+resources:
+  jobs:
+    clinicalflow_streaming_job:
+      name: ClinicalFlow - Streaming Job
+      description: "Manages the always-on ER admissions streaming pipeline"
+
+      # No schedule — streaming pipeline runs continuously
+      # This job is used to restart the pipeline if it goes down
+
+      email_notifications:
+        on_failure:
+          - jayanthdolai@gmail.com
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: start_streaming_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.clinicalflow_streaming_pipeline.id}
+            full_refresh: false
+
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 86400   # alert if job runs > 24h without completing (streaming is long-lived)

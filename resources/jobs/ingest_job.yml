@@ -1,0 +1,45 @@
+resources:
+  jobs:
+    clinicalflow_ingest_job:
+      name: ClinicalFlow - Ingest Job
+      description: "Triggers the Lakeflow batch pipeline to ingest claims and ER admissions"
+
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"   # 06:00 UTC daily
+        timezone_id: UTC
+        pause_status: PAUSED   # change to UNPAUSED when ready
+
+      email_notifications:
+        on_failure:
+          - jayanthdolai@gmail.com
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: run_batch_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.clinicalflow_batch_pipeline.id}
+            full_refresh: false
+
+        - task_key: run_gold_aggregations
+          depends_on:
+            - task_key: run_batch_pipeline
+          notebook_task:
+            notebook_path: src/pipelines/gold_aggregations.py
+            base_parameters:
+              catalog: ${var.catalog}
+          job_cluster_key: ingest_cluster
+
+      job_clusters:
+        - job_cluster_key: ingest_cluster
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            autoscale:
+              min_workers: ${var.min_workers}
+              max_workers: ${var.max_workers}
+            spark_conf:
+              spark.databricks.delta.preview.enabled: "true"
+            azure_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK_AZURE

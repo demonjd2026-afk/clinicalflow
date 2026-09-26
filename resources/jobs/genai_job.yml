@@ -1,0 +1,47 @@
+resources:
+  jobs:
+    clinicalflow_genai_job:
+      name: ClinicalFlow - GenAI Enrichment Job
+      description: >
+        Runs FMAPI enrichment of diagnosis_dim, then syncs the Vector Search index.
+        Scheduled after ingest_job completes.
+
+      schedule:
+        quartz_cron_expression: "0 0 8 * * ?"   # 08:00 UTC daily (2h after ingest)
+        timezone_id: UTC
+        pause_status: PAUSED
+
+      email_notifications:
+        on_failure:
+          - jayanthdolai@gmail.com
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: fmapi_enrichment
+          notebook_task:
+            notebook_path: src/genai/fmapi_enrichment.py
+            base_parameters:
+              catalog: ${var.catalog}
+          job_cluster_key: genai_cluster
+
+        - task_key: vector_search_sync
+          depends_on:
+            - task_key: fmapi_enrichment
+          notebook_task:
+            notebook_path: src/genai/vector_search_setup.py
+            base_parameters:
+              catalog: ${var.catalog}
+          job_cluster_key: genai_cluster
+
+      job_clusters:
+        - job_cluster_key: genai_cluster
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: 2   # FMAPI enrichment is mostly I/O bound, not Spark compute
+            spark_conf:
+              spark.databricks.delta.preview.enabled: "true"
+            azure_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK_AZURE

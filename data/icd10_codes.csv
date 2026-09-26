@@ -1,0 +1,66 @@
+icd10_code,description,category,chronic_flag
+E11.9,Type 2 diabetes mellitus without complications,Endocrine Nutritional and Metabolic Diseases,true
+E11.65,Type 2 diabetes mellitus with hyperglycemia,Endocrine Nutritional and Metabolic Diseases,true
+E11.40,Type 2 diabetes mellitus with diabetic neuropathy unspecified,Endocrine Nutritional and Metabolic Diseases,true
+E11.311,Type 2 diabetes mellitus with unspecified diabetic retinopathy with macular edema,Endocrine Nutritional and Metabolic Diseases,true
+E11.22,Type 2 diabetes mellitus with diabetic chronic kidney disease stage 3,Endocrine Nutritional and Metabolic Diseases,true
+I10,Essential primary hypertension,Diseases of the Circulatory System,true
+I25.10,Atherosclerotic heart disease of native coronary artery without angina pectoris,Diseases of the Circulatory System,true
+I50.9,Heart failure unspecified,Diseases of the Circulatory System,true
+I50.32,Chronic diastolic heart failure,Diseases of the Circulatory System,true
+I48.91,Unspecified atrial fibrillation,Diseases of the Circulatory System,true
+J44.1,Chronic obstructive pulmonary disease with acute exacerbation,Diseases of the Respiratory System,true
+J44.0,Chronic obstructive pulmonary disease with acute lower respiratory infection,Diseases of the Respiratory System,true
+J45.901,Unspecified asthma with acute exacerbation,Diseases of the Respiratory System,true
+J18.9,Pneumonia unspecified organism,Diseases of the Respiratory System,false
+J06.9,Acute upper respiratory infection unspecified,Diseases of the Respiratory System,false
+M79.3,Panniculitis unspecified,Diseases of the Musculoskeletal System,false
+M54.5,Low back pain,Diseases of the Musculoskeletal System,false
+M17.11,Primary osteoarthritis right knee,Diseases of the Musculoskeletal System,true
+M79.621,Pain in right upper arm,Diseases of the Musculoskeletal System,false
+M25.511,Pain in right shoulder,Diseases of the Musculoskeletal System,false
+F32.9,Major depressive disorder single episode unspecified,Mental Behavioral and Neurodevelopmental Disorders,true
+F41.1,Generalized anxiety disorder,Mental Behavioral and Neurodevelopmental Disorders,true
+F10.20,Alcohol use disorder unspecified,Mental Behavioral and Neurodevelopmental Disorders,true
+F33.0,Major depressive disorder recurrent mild,Mental Behavioral and Neurodevelopmental Disorders,true
+F41.0,Panic disorder without agoraphobia,Mental Behavioral and Neurodevelopmental Disorders,true
+N18.3,Chronic kidney disease stage 3 unspecified,Diseases of the Genitourinary System,true
+N18.4,Chronic kidney disease stage 4,Diseases of the Genitourinary System,true
+N40.0,Benign prostatic hyperplasia without lower urinary tract symptoms,Diseases of the Genitourinary System,true
+N39.0,Urinary tract infection site not specified,Diseases of the Genitourinary System,false
+N20.0,Calculus of kidney,Diseases of the Genitourinary System,false
+K21.0,Gastro-esophageal reflux disease with esophagitis,Diseases of the Digestive System,true
+K25.9,Gastric ulcer unspecified as acute or chronic without hemorrhage or perforation,Diseases of the Digestive System,false
+K57.30,Diverticulosis of large intestine without perforation or abscess without bleeding,Diseases of the Digestive System,true
+K92.1,Melena,Diseases of the Digestive System,false
+K29.70,Gastritis unspecified without bleeding,Diseases of the Digestive System,false
+C18.9,Malignant neoplasm of colon unspecified,Neoplasms,false
+C34.10,Malignant neoplasm of upper lobe bronchus or lung unspecified side,Neoplasms,false
+C50.911,Malignant neoplasm of unspecified site of right female breast,Neoplasms,false
+C61,Malignant neoplasm of prostate,Neoplasms,false
+C80.1,Malignant neoplasm without specification of site,Neoplasms,false
+G43.909,Migraine unspecified not intractable without status migrainosus,Diseases of the Nervous System,true
+G89.29,Other chronic pain,Diseases of the Nervous System,true
+G20,Parkinson's disease,Diseases of the Nervous System,true
+G30.9,Alzheimer's disease unspecified,Diseases of the Nervous System,true
+G35,Multiple sclerosis,Diseases of the Nervous System,true
+Z00.00,Encounter for general adult medical examination without abnormal findings,Factors Influencing Health Status,false
+Z23,Encounter for immunization,Factors Influencing Health Status,false
+Z12.11,Encounter for screening for malignant neoplasm of colon,Factors Influencing Health Status,false
+Z51.11,Encounter for antineoplastic chemotherapy,Factors Influencing Health Status,false
+Z79.4,Long-term current use of insulin,Factors Influencing Health Status,false
+S72.001A,Fracture of unspecified part of neck of right femur initial encounter for closed fracture,Injury Poisoning and External Causes,false
+S09.90XA,Unspecified injury of head initial encounter,Injury Poisoning and External Causes,false
+T14.90,Injury unspecified initial encounter,Injury Poisoning and External Causes,false
+S32.001A,Wedge compression fracture of first lumbar vertebra initial encounter,Injury Poisoning and External Causes,false
+T39.1X1A,Poisoning by 4-Aminophenol derivatives accidental initial encounter,Injury Poisoning and External Causes,false
+E66.9,Obesity unspecified,Endocrine Nutritional and Metabolic Diseases,true
+E78.5,Hyperlipidemia unspecified,Endocrine Nutritional and Metabolic Diseases,true
+E03.9,Hypothyroidism unspecified,Endocrine Nutritional and Metabolic Diseases,true
+E11.51,Type 2 diabetes mellitus with diabetic peripheral angiopathy without gangrene,Endocrine Nutritional and Metabolic Diseases,true
+E87.1,Hypo-osmolality and hyponatremia,Endocrine Nutritional and Metabolic Diseases,false
+I63.9,Cerebral infarction unspecified,Diseases of the Circulatory System,false
+I69.351,Hemiplegia and hemiparesis following cerebral infarction affecting right dominant side,Diseases of the Circulatory System,true
+I87.2,Venous insufficiency chronic peripheral,Diseases of the Circulatory System,true
+I73.9,Peripheral vascular disease unspecified,Diseases of the Circulatory System,true
+I26.99,Other pulmonary embolism without acute cor pulmonale,Diseases of the Circulatory System,false

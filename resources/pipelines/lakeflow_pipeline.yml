@@ -1,0 +1,63 @@
+resources:
+  pipelines:
+    clinicalflow_batch_pipeline:
+      name: ${var.pipeline_name}
+      target: ${var.catalog}.silver
+      catalog: ${var.catalog}
+
+      development: true   # set false in prod target
+
+      configuration:
+        pipeline.catalog: ${var.catalog}
+        pipeline.storage_path: ${var.storage_path}
+
+      libraries:
+        - notebook:
+            path: src/pipelines/pipeline_batch.py
+        - notebook:
+            path: src/pipelines/expectations.py
+
+      clusters:
+        - label: default
+          autoscale:
+            min_workers: ${var.min_workers}
+            max_workers: ${var.max_workers}
+            mode: ENHANCED
+          node_type_id: ${var.node_type}
+          spark_version: ${var.spark_version}
+          spark_conf:
+            spark.databricks.delta.preview.enabled: "true"
+
+      continuous: false   # triggered pipeline; set true for streaming
+
+      channel: CURRENT   # use PREVIEW for latest DLT features
+
+      edition: ADVANCED   # required for APPLY CHANGES INTO (SCD Type 2)
+
+    clinicalflow_streaming_pipeline:
+      name: ${var.pipeline_name} - Streaming
+      target: ${var.catalog}.silver
+      catalog: ${var.catalog}
+
+      development: true
+
+      configuration:
+        pipeline.catalog: ${var.catalog}
+        pipeline.storage_path: ${var.storage_path}
+
+      libraries:
+        - notebook:
+            path: src/pipelines/pipeline_streaming.py
+        - notebook:
+            path: src/pipelines/expectations.py
+
+      clusters:
+        - label: default
+          num_workers: 2
+          node_type_id: ${var.node_type}
+          spark_version: ${var.spark_version}
+
+      continuous: true    # always-on streaming pipeline
+
+      channel: CURRENT
+      edition: ADVANCED
