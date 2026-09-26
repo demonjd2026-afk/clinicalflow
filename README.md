@@ -225,195 +225,26 @@ clinicalflow/
 
 ## Azure Pay As You Go Setup
 
-Follow these steps once to provision the full infrastructure.
+> 📖 **Full step-by-step setup guide with actual errors encountered and fixes:** [SETUP.md](./SETUP.md)
 
-### Step 1 — Create Azure Account
+Quick reference — 12 steps to go from zero to a running workspace:
 
-1. Go to [portal.azure.com](https://portal.azure.com)
-2. Click **Start free** → sign in with a Microsoft/Outlook account or create one
-3. Complete identity verification (credit/debit card required — not charged upfront)
-4. Select **Pay As You Go** when prompted for a subscription type
+| Step | What you do | Guide |
+|---|---|---|
+| 1 | Create Azure account (PAYG) | [Step 1 →](./SETUP.md#step-1--create-azure-account) |
+| 2 | Set a $40/month cost alert | [Step 2 →](./SETUP.md#step-2--set-a-cost-alert) |
+| 3 | Create resource group `rg-clinicalflow` | [Step 3 →](./SETUP.md#step-3--create-a-resource-group) |
+| 4 | Create ADLS Gen2 storage + 3 containers | [Step 4 →](./SETUP.md#step-4--create-adls-gen2-storage-account) |
+| 5 | Create Databricks Premium (Hybrid) workspace | [Step 5 →](./SETUP.md#step-5--create-azure-databricks-workspace) |
+| 6 | Verify Unity Catalog is auto-enabled | [Step 6 →](./SETUP.md#step-6--verify-unity-catalog-auto-enabled) |
+| 7 | Assign IAM role + create 3 external locations | [Step 7 →](./SETUP.md#step-7--assign-iam-role--create-external-locations) |
+| 8 | Run `CREATE CATALOG` SQL with MANAGED LOCATION | [Step 8 →](./SETUP.md#step-8--create-unity-catalog-catalogs--schemas) |
+| 9 | Generate Personal Access Token | [Step 9 →](./SETUP.md#step-9--generate-a-personal-access-token-pat) |
+| 10 | Configure Databricks CLI | [Step 10 →](./SETUP.md#step-10--configure-databricks-cli) |
+| 11 | Clone repo + DAB deploy (dev/staging/prod) | [Step 11 →](./SETUP.md#step-11--clone-repo-and-deploy-with-dab) |
+| 12 | Bootstrap 150M synthetic claims | [Step 12 →](./SETUP.md#step-12--bootstrap-synthetic-data) |
 
-> Azure offers a **$200 free credit for 30 days** on new accounts. The entire dev build fits within this credit.
-
----
-
-### Step 2 — Set a Cost Alert (Do This First)
-
-1. In Azure Portal → search **Cost Management + Billing** → select your subscription
-2. Click **Budgets** → **Add**
-3. Set amount: **$40** (≈ ₹3,350), period: **Monthly**
-4. Add alert at 80% and 100% with your email
-5. Click **Create**
-
-This ensures you get an email before spending beyond your budget.
-
----
-
-### Step 3 — Create a Resource Group
-
-1. Search **Resource groups** → **Create**
-2. Subscription: Pay As You Go
-3. Resource group name: `rg-clinicalflow`
-4. Region: **East US 2** (best Databricks Premium availability)
-5. Click **Review + Create** → **Create**
-
----
-
-### Step 4 — Create ADLS Gen2 Storage Account
-
-1. Search **Storage accounts** → **Create**
-2. Resource group: `rg-clinicalflow`
-3. Storage account name: `stclinicalflow` *(must be globally unique, lowercase, no hyphens)*
-4. Region: **East US 2**
-5. Performance: **Standard**
-6. Redundancy: **LRS** *(cheapest — sufficient for a portfolio project)*
-7. Click **Advanced** tab → under **Data Lake Storage Gen2** → enable **Hierarchical namespace** ✅ *(critical — this is what makes it ADLS Gen2)*
-8. Click **Review + Create** → **Create**
-
-After creation, go to the storage account → **Containers** → **+ Container**:
-- Create three containers: `clinicalflow-dev`, `clinicalflow-staging`, `clinicalflow-prod`
-
----
-
-### Step 5 — Create Azure Databricks Workspace
-
-1. Search **Azure Databricks** → **Create**
-2. Resource group: `rg-clinicalflow`
-3. Workspace name: `adb-clinicalflow`
-4. Region: **East US 2**
-5. Pricing tier: **Premium (+ Role-based access controls)** ← mandatory
-6. Workspace type: **Hybrid** ← select this, not Serverless
-   - Hybrid gives you your own ADLS Gen2 storage, custom job clusters, cluster policies, and full Unity Catalog external location support
-   - Serverless uses Databricks-managed storage only and does not support custom compute or external locations
-7. Click **Review + Create** → **Create**
-
-Wait ~2 minutes for deployment. Then click **Launch Workspace**.
-
----
-
-### Step 6 — Enable Unity Catalog
-
-Unity Catalog requires a one-time metastore setup at the Azure Databricks account level.
-
-1. Go to [accounts.azuredatabricks.net](https://accounts.azuredatabricks.net)
-2. Sign in with the same Azure account
-3. Click **Data** → **Create Metastore**
-4. Name: `clinicalflow-metastore`
-5. Region: **eastus2**
-6. ADLS Gen2 path: `abfss://clinicalflow-dev@stclinicalflow.dfs.core.windows.net/metastore`
-7. Click **Create**
-8. Under **Workspaces** → assign `adb-clinicalflow` to this metastore
-
----
-
-### Step 7 — Create Storage Credential + External Location
-
-In your Databricks workspace:
-
-1. Go to **Catalog** (left sidebar) → **External Data** → **Credentials** → **Create credential**
-2. Select **Azure Managed Identity** or create a **Service Principal** in Azure AD with Storage Blob Data Contributor role on your storage account
-3. Enter the application ID and secret
-4. Name: `clinicalflow-storage-credential`
-
-Then create External Locations:
-
-1. **External Data** → **External locations** → **Create**
-2. Name: `clinicalflow_dev_loc`
-3. URL: `abfss://clinicalflow-dev@stclinicalflow.dfs.core.windows.net/`
-4. Credential: `clinicalflow-storage-credential`
-5. Repeat for `clinicalflow_staging_loc` and `clinicalflow_prod_loc`
-
----
-
-### Step 8 — Create Unity Catalog Catalogs
-
-Open a notebook in your workspace and run:
-
-```sql
--- Create one catalog per environment
-CREATE CATALOG IF NOT EXISTS clinicalflow_dev;
-CREATE CATALOG IF NOT EXISTS clinicalflow_staging;
-CREATE CATALOG IF NOT EXISTS clinicalflow_prod;
-
--- Create schemas inside each catalog
-CREATE SCHEMA IF NOT EXISTS clinicalflow_dev.bronze;
-CREATE SCHEMA IF NOT EXISTS clinicalflow_dev.silver;
-CREATE SCHEMA IF NOT EXISTS clinicalflow_dev.gold;
-```
-
----
-
-### Step 9 — Generate a Personal Access Token
-
-1. In Databricks workspace → top-right avatar → **Settings**
-2. **Developer** → **Access tokens** → **Generate new token**
-3. Name: `clinicalflow-pat`, expiry: 90 days
-4. Copy the token immediately — it is shown only once
-
----
-
-### Step 10 — Install Databricks CLI and Configure
-
-```bash
-# Install Databricks CLI (v2)
-pip install databricks-cli
-
-# Verify version (needs >= 0.200 for DAB support)
-databricks --version
-
-# Configure with your workspace URL and token
-databricks configure --token
-# Prompt: Databricks Host → https://adb-<id>.azuredatabricks.net
-# Prompt: Token → paste your PAT from Step 9
-```
-
----
-
-### Step 11 — Clone Repo and Deploy
-
-```bash
-# Clone the repository
-git clone https://github.com/demonjd2026-afk/clinicalflow.git
-cd clinicalflow
-
-# Validate the DAB bundle
-databricks bundle validate
-
-# Deploy to dev environment
-databricks bundle deploy --target dev
-
-# Deploy to staging
-databricks bundle deploy --target staging
-
-# Deploy to prod (uses service principal)
-databricks bundle deploy --target prod
-```
-
----
-
-### Step 12 — Bootstrap Synthetic Data
-
-```bash
-# Generate 150M synthetic claims in dev
-databricks bundle run data_generation_job --target dev
-
-# Verify row counts in notebook
-# SELECT COUNT(*) FROM clinicalflow_dev.bronze.claims_raw  → 150,000,000
-```
-
----
-
-### Cost Control Tips
-
-| Action | Saving |
-|---|---|
-| Use **job clusters** (terminate after run) — never all-purpose clusters | ~60% |
-| Set **cluster policy** to cap DBUs at 4 nodes max | Prevents runaway spend |
-| Keep **Vector Search endpoint stopped** when not demoing | ~₹400/month saved |
-| Use `Trigger.AvailableNow` instead of continuous streaming | Pay only per run |
-| Run OPTIMIZE + VACUUM weekly, not daily | Reduces cluster hours |
-| Enable **auto-terminate** on all-purpose clusters after 30 min idle | Eliminates idle cost |
+> 💡 **Estimated cost:** ~₹3,500–4,500 total for a full dev build. See [cost control tips](./SETUP.md#cost-control-tips).
 
 ---
 
