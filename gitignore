@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Databricks
+.databricks/
+bundle.lock
+__pycache__/
+
+# Environment / secrets
+.env
+.env.*
+*.cfg
+databricks.cfg
+~/.databrickscfg
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Jupyter (if any local notebooks)
+.ipynb_checkpoints/
+*.ipynb
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+
+# Data files (generated, not committed)
+data/raw/
+data/generated/
+*.csv.gz
+*.parquet
