@@ -282,8 +282,11 @@ After creation, go to the storage account → **Containers** → **+ Container**
 2. Resource group: `rg-clinicalflow`
 3. Workspace name: `adb-clinicalflow`
 4. Region: **East US 2**
-5. Pricing tier: **Premium** ← mandatory
-6. Click **Review + Create** → **Create**
+5. Pricing tier: **Premium (+ Role-based access controls)** ← mandatory
+6. Workspace type: **Hybrid** ← select this, not Serverless
+   - Hybrid gives you your own ADLS Gen2 storage, custom job clusters, cluster policies, and full Unity Catalog external location support
+   - Serverless uses Databricks-managed storage only and does not support custom compute or external locations
+7. Click **Review + Create** → **Create**
 
 Wait ~2 minutes for deployment. Then click **Launch Workspace**.
 
