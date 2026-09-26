@@ -1,0 +1,46 @@
+bundle:
+  name: clinicalflow
+
+variables:
+  catalog:
+    description: Unity Catalog catalog name
+    default: clinicalflow_dev
+  storage_path:
+    description: ABFSS root path for this environment
+    default: abfss://clinicalflow-dev@stclinicalflow.dfs.core.windows.net/
+  node_type:
+    description: Cluster node type
+    default: Standard_DS3_v2
+
+include:
+  - variables.yml
+  - resources/pipelines/*.yml
+  - resources/jobs/*.yml
+  - resources/clusters/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://adb-7405614537307345.5.azuredatabricks.net
+    variables:
+      catalog: clinicalflow_dev
+      storage_path: abfss://clinicalflow-dev@stclinicalflow.dfs.core.windows.net/
+
+  staging:
+    mode: development
+    workspace:
+      host: https://adb-7405614537307345.5.azuredatabricks.net
+    variables:
+      catalog: clinicalflow_staging
+      storage_path: abfss://clinicalflow-staging@stclinicalflow.dfs.core.windows.net/
+
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-7405614537307345.5.azuredatabricks.net
+    variables:
+      catalog: clinicalflow_prod
+      storage_path: abfss://clinicalflow-prod@stclinicalflow.dfs.core.windows.net/
+      node_type: Standard_DS4_v2
