@@ -238,13 +238,79 @@ Quick reference — 12 steps to go from zero to a running workspace:
 | 5 | Create Databricks Premium (Hybrid) workspace | [Step 5 →](./SETUP.md#step-5--create-azure-databricks-workspace) |
 | 6 | Verify Unity Catalog is auto-enabled | [Step 6 →](./SETUP.md#step-6--verify-unity-catalog-auto-enabled) |
 | 7 | Assign IAM role + create 3 external locations | [Step 7 →](./SETUP.md#step-7--assign-iam-role--create-external-locations) |
-| 8 | Run `CREATE CATALOG` SQL with MANAGED LOCATION | [Step 8 →](./SETUP.md#step-8--create-unity-catalog-catalogs--schemas) |
+| 8 | Create catalog via UI (Default Storage) | [Step 8 →](./SETUP.md#step-8--create-unity-catalog-catalogs--schemas) |
 | 9 | Generate Personal Access Token | [Step 9 →](./SETUP.md#step-9--generate-a-personal-access-token-pat) |
 | 10 | Configure Databricks CLI | [Step 10 →](./SETUP.md#step-10--configure-databricks-cli) |
 | 11 | Clone repo + DAB deploy (dev/staging/prod) | [Step 11 →](./SETUP.md#step-11--clone-repo-and-deploy-with-dab) |
 | 12 | Bootstrap 150M synthetic claims | [Step 12 →](./SETUP.md#step-12--bootstrap-synthetic-data) |
 
 > 💡 **Estimated cost:** ~₹3,500–4,500 total for a full dev build. See [cost control tips](./SETUP.md#cost-control-tips).
+
+---
+
+## Compute Configuration
+
+> ⚠️ **Do not use Serverless compute for setup notebooks.** Serverless clusters use a restricted workspace default credential (`adb_clinicalflow`) that is scoped only to the internal UC metastore storage. Managed tables in `clinicalflow_dev` are stored in `clinicalflow_dev_loc` (ADLS Gen2 `stclinicalflow`), which requires a regular interactive cluster with the workspace managed identity.
+
+### Interactive Cluster (notebooks 01–05, data generation)
+
+| Setting | Value |
+|---|---|
+| **Policy** | Personal Compute |
+| **Runtime** | `15.4 LTS` (Scala 2.12, Spark 3.5.0) — uncheck Machine Learning |
+| **Instance type** | `Standard_D4ds_v5` (16 GB, 4 cores) |
+| **Mode** | Single node |
+| **Data access** | Unity Catalog (auto-configured) |
+| **Estimated cost** | ~1 DBU/h |
+
+> The runtime must be **15.4 LTS (Scala 2.12)** to match `spark_version: 15.4.x-scala2.12` set in `variables.yml`. Do not use the Machine Learning runtime variant — it bundles ML libraries that are unnecessary here and runs on a different DBR.
+
+### Why Serverless Fails
+
+Serverless clusters use an Entra-managed workspace credential (`adb_clinicalflow`) whose storage access is locked to the internal UC metastore path (`abfss://unity-catalog-storage@dbstoragek27ajb4toues2.dfs.core.windows.net/...`). When a catalog is created with a custom external location (e.g. `clinicalflow_dev_loc` pointing to `stclinicalflow`), any `CREATE TABLE` or `saveAsTable` call routes managed table data to that custom storage — which the Serverless credential cannot reach, producing:
+
+```
+UNAUTHORIZED_ACCESS: The credential 'adb_clinicalflow' is a workspace default credential
+that is only allowed to access data in the following paths:
+'abfss://unity-catalog-storage@dbstoragek27ajb4toues2.dfs.core.windows.net/...'
+```
+
+A regular interactive cluster inherits the workspace managed identity, which was granted **Storage Blob Data Contributor** on `stclinicalflow` when the external location was set up — so it can write to both storage accounts.
+
+### Job Clusters (DAB-deployed pipelines)
+
+Job clusters are defined in `variables.yml` and `resources/clusters/job_cluster_policy.yml`:
+
+| Setting | Value |
+|---|---|
+| **Runtime** | `15.4.x-scala2.12` |
+| **Driver** | `Standard_DS3_v2` |
+| **Workers** | `Standard_DS3_v2`, min 1 / max 4 (autoscale) |
+| **Spot policy** | `SPOT_WITH_FALLBACK_AZURE` |
+| **On-demand fallback** | Enabled (prevents job failure if spot unavailable) |
+
+---
+
+## Catalog Setup — Known Quirk
+
+The `clinicalflow_dev` catalog **must be created via the Databricks UI**, not SQL. The workspace metastore has no root storage URL configured, so `CREATE CATALOG` without `MANAGED LOCATION` fails with:
+
+```
+Metastore storage root URL does not exist.
+```
+
+**UI path:** Catalog → + Add → Add a catalog → select `clinicalflow_dev_loc` as storage location → name `clinicalflow_dev` → Create.
+
+Then create schemas in SQL Editor:
+
+```sql
+USE CATALOG clinicalflow_dev;
+CREATE SCHEMA IF NOT EXISTS bronze;
+CREATE SCHEMA IF NOT EXISTS silver;
+CREATE SCHEMA IF NOT EXISTS gold;
+```
+
+The notebook `01_unity_catalog_setup.py` assumes the catalog and schemas already exist and will skip catalog creation.
 
 ---
 
